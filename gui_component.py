@@ -12,8 +12,7 @@ class GuiComponent:
         width: int,
         height: int,
         parent: Optional[GuiComponent] = None,
-        position: Tuple[int, int] = (0, 0),
-        canvas: Optional[np.ndarray] = None,
+        position: Tuple[int, int] = (0, 0)
     ):
         """
         Initializes a GuiComponent.
@@ -24,7 +23,6 @@ class GuiComponent:
             height (int): The height of the component.
             parent (Optional[GuiComponent]): The parent component. Defaults to None.
             position (Tuple[int, int]): The (x, y) position relative to the parent. Defaults to (0, 0).
-            canvas (Optional[np.ndarray]): The canvas to draw on. Defaults to None.
         """
         self.name = name
         self.parent = parent
@@ -32,7 +30,7 @@ class GuiComponent:
         self.position = position
         self._width = width
         self._height = height
-        self.canvas = canvas
+        self.canvas = None  # Canvas to store rendered output
 
         if self.parent:
             self.parent.add_child(self)
@@ -95,25 +93,40 @@ class GuiComponent:
             self.children.remove(child)
             child.parent = None
 
-    def render(self, surface: Optional[np.ndarray] = None):
+
+    def render(self, target_surface: Optional[np.ndarray] = None) -> np.ndarray:
         """
         Renders the component and its children on a given surface.
         This method should be overridden by subclasses to provide specific drawing logic.
         """
         # 1. Draw this component on the surface (subclass responsibility)
-        target_surface = surface if surface is not None else self.canvas
+        target_surface
         if target_surface is None:
             raise ValueError("Render called without a surface and no canvas is set.")
-
-        target_surface = self.draw(target_surface)
+        
+        # Get the surface from draw method
+        self.draw()
+        
+        # Place the rendered surface at the correct absolute position
+        abs_x, abs_y = self.abs_position
+        h, w = self.canvas.shape[:2]
+        target_h, target_w = target_surface.shape[:2]
+        
+        # Ensure we don't go out of bounds
+        end_x = min(abs_x + w, target_w)
+        end_y = min(abs_y + h, target_h)
+        
+        if abs_x >= 0 and abs_y >= 0 and abs_x < target_w and abs_y < target_h:
+            target_surface[abs_y:end_y, abs_x:end_x] = self.canvas[0:end_y-abs_y, 0:end_x-abs_x]
         if target_surface is None:
             raise ValueError("Draw method did not return a valid surface.")
         
         # 2. Recursively render children
         for child in self.children:
-            target_surface = child.render(target_surface)
+            child.render(target_surface)
+            
 
-    def draw(self, surface: np.ndarray) -> np.ndarray:
+    def draw(self) -> np.ndarray:
         """
         The drawing logic for the component itself. Subclasses must implement this.
         
@@ -124,5 +137,5 @@ class GuiComponent:
             The modified surface after drawing the component.
         """
         raise NotImplementedError("Subclasses must implement the draw method.")
-        return surface
+        return None
 
