@@ -94,6 +94,29 @@ class GuiComponent:
             child.parent = None
 
 
+    def _blend_canvas_to_surface(self, canvas_slice: np.ndarray, target_slice: np.ndarray) -> np.ndarray:
+        """
+        Blends a canvas slice onto a target surface slice, handling channel mismatches.
+        
+        Args:
+            canvas_slice: The source canvas slice to blend
+            target_slice: The target surface slice to blend onto
+            
+        Returns:
+            The blended result
+        """
+        # If canvas has 4 channels (BGRA) and target has 3 (BGR), blend using alpha
+        if len(canvas_slice.shape) == 3 and canvas_slice.shape[2] == 4 and len(target_slice.shape) == 3 and target_slice.shape[2] == 3:
+            # Extract RGB and alpha channels
+            canvas_rgb = canvas_slice[:, :, :3]
+            alpha = canvas_slice[:, :, 3:4] / 255.0
+            
+            # Alpha blending: result = alpha * foreground + (1 - alpha) * background
+            return (alpha * canvas_rgb + (1 - alpha) * target_slice).astype(target_slice.dtype)
+        else:
+            # Direct assignment if channels match
+            return canvas_slice
+
     def render(self, target_surface: Optional[np.ndarray] = None) -> np.ndarray:
         """
         Renders the component and its children on a given surface.
@@ -117,7 +140,13 @@ class GuiComponent:
         end_y = min(abs_y + h, target_h)
         
         if abs_x >= 0 and abs_y >= 0 and abs_x < target_w and abs_y < target_h:
-            target_surface[abs_y:end_y, abs_x:end_x] = self.canvas[0:end_y-abs_y, 0:end_x-abs_x]
+            # Handle channel mismatch between canvas and target surface
+            canvas_slice = self.canvas[0:end_y-abs_y, 0:end_x-abs_x]
+            target_slice = target_surface[abs_y:end_y, abs_x:end_x]
+            
+            # Blend the canvas onto the target surface
+            blended = self._blend_canvas_to_surface(canvas_slice, target_slice)
+            target_surface[abs_y:end_y, abs_x:end_x] = blended
         if target_surface is None:
             raise ValueError("Draw method did not return a valid surface.")
         
