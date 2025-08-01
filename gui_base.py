@@ -1,13 +1,19 @@
 import cv2
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Union, Callable
 from .gui_component import GuiComponent
 
 class GUIBase(GuiComponent):
     """A top-level component that represents a window and a canvas to draw on."""
-    def __init__(self, name: str, width: int, height: int):
+    def __init__(
+        self, 
+        name: str, 
+        width: Union[int, Callable[[int], int], str] = 800, 
+        height: Union[int, Callable[[int], int], str] = 600,
+        auto_size: bool = False
+    ):
         """Initializes the window with a black canvas."""
-        super().__init__(name, width, height)
+        super().__init__(name, width, height, auto_size=auto_size)
         self.name = name
 
     def draw(self):

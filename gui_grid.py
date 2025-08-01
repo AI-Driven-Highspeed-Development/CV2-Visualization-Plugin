@@ -15,7 +15,8 @@ class GUIGrid(GuiComponent):
         cols: int = 2,
         cell_width: int = 320,
         cell_height: int = 240,
-        padding: int = 10
+        padding: int = 10,
+        auto_size: bool = True
     ):
         """
         Initialize the grid layout component.
@@ -29,19 +30,20 @@ class GUIGrid(GuiComponent):
             cell_width: Width of each grid cell
             cell_height: Height of each grid cell
             padding: Padding between grid cells
+            auto_size: Whether to auto-size based on grid content
         """
-        # Calculate total grid dimensions
-        total_width = cols * cell_width + (cols - 1) * padding
-        total_height = rows * cell_height + (rows - 1) * padding
-        
-        super().__init__(name, total_width, total_height, parent, position)
-        
         self.rows = rows
         self.cols = cols
         self.cell_width = cell_width
         self.cell_height = cell_height
         self.padding = padding
         self.grid_children = []  # Track children added to specific grid positions
+        
+        # Calculate total grid dimensions
+        total_width = cols * cell_width + (cols - 1) * padding
+        total_height = rows * cell_height + (rows - 1) * padding
+        
+        super().__init__(name, total_width, total_height, parent, position, auto_size)
         
     def add_child_to_grid(self, child: GuiComponent, row: int, col: int) -> bool:
         """
@@ -141,8 +143,10 @@ class GUIGrid(GuiComponent):
         self.cols = cols
         
         # Recalculate total dimensions
-        self._width = cols * self.cell_width + (cols - 1) * self.padding
-        self._height = rows * self.cell_height + (rows - 1) * self.padding
+        total_width = cols * self.cell_width + (cols - 1) * self.padding
+        total_height = rows * self.cell_height + (rows - 1) * self.padding
+        self._width_spec = total_width
+        self._height_spec = total_height
         
         # Clear grid tracking
         self.grid_children = []

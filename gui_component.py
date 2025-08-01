@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable, Union
 import numpy as np
 
 class GuiComponent:
@@ -9,49 +9,91 @@ class GuiComponent:
     def __init__(
         self,
         name: str,
-        width: int,
-        height: int,
+        width: Union[int, Callable[[int], int], str] = 0,
+        height: Union[int, Callable[[int], int], str] = 0,
         parent: Optional[GuiComponent] = None,
-        position: Tuple[int, int] = (0, 0)
+        position: Tuple[int, int] = (0, 0),
+        auto_size: bool = False
     ):
         """
         Initializes a GuiComponent.
 
         Args:
             name (str): The name of the component.
-            width (int): The width of the component.
-            height (int): The height of the component.
+            width (Union[int, Callable[[int], int], str]): Width of the component. Can be:
+                - int: Fixed width
+                - Callable: Function that takes children's total width and returns component width
+                - str: Special strings like "auto" for automatic sizing
+            height (Union[int, Callable[[int], int], str]): Height of the component (same options as width)
             parent (Optional[GuiComponent]): The parent component. Defaults to None.
             position (Tuple[int, int]): The (x, y) position relative to the parent. Defaults to (0, 0).
+            auto_size (bool): Whether to automatically size based on children. Defaults to False.
         """
         self.name = name
         self.parent = parent
         self.children: List[GuiComponent] = []
         self.position = position
-        self._width = width
-        self._height = height
+        self._width_spec = width
+        self._height_spec = height
+        self.auto_size = auto_size
         self.canvas = None  # Canvas to store rendered output
 
         if self.parent:
             self.parent.add_child(self)
 
+    def _calculate_size(self, spec: Union[int, Callable[[int], int], str], children_total: int) -> int:
+        """
+        Calculate the actual size based on the specification and children's total size.
+        
+        Args:
+            spec: The size specification (int, callable, or string)
+            children_total: The total size of children
+            
+        Returns:
+            The calculated size
+        """
+        if isinstance(spec, int):
+            return spec
+        elif callable(spec):
+            return spec(children_total)
+        elif isinstance(spec, str):
+            if spec == "auto":
+                return children_total
+            else:
+                # Parse expressions like "auto+10", "auto*1.2", etc.
+                if "auto" in spec:
+                    try:
+                        # Replace "auto" with the children_total value
+                        expression = spec.replace("auto", str(children_total))
+                        # Evaluate simple mathematical expressions
+                        return int(eval(expression))
+                    except:
+                        return children_total
+        return 0
+
     @property
     def width(self) -> int:
         """The width of the component."""
-        return self._width
+        if self.auto_size or not isinstance(self._width_spec, int):
+            children_total_width = max([child.position[0] + child.width for child in self.children] + [0])
+            return self._calculate_size(self._width_spec, children_total_width)
+        return self._width_spec
 
     @width.setter
-    def width(self, value: int):
-        self._width = value
+    def width(self, value: Union[int, Callable[[int], int], str]):
+        self._width_spec = value
 
     @property
     def height(self) -> int:
         """The height of the component."""
-        return self._height
+        if self.auto_size or not isinstance(self._height_spec, int):
+            children_total_height = max([child.position[1] + child.height for child in self.children] + [0])
+            return self._calculate_size(self._height_spec, children_total_height)
+        return self._height_spec
 
     @height.setter
-    def height(self, value: int):
-        self._height = value
+    def height(self, value: Union[int, Callable[[int], int], str]):
+        self._height_spec = value
 
     @property
     def abs_position(self) -> Tuple[int, int]:
