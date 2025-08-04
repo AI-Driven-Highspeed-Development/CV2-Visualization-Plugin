@@ -159,42 +159,50 @@ class GuiComponent:
             # Direct assignment if channels match
             return canvas_slice
 
-    def render(self, target_surface: Optional[np.ndarray] = None) -> np.ndarray:
+    def render(self, target_surface: Optional[np.ndarray] = None, render_position: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """
         Renders the component and its children on a given surface.
-        This method should be overridden by subclasses to provide specific drawing logic.
+        
+        Args:
+            target_surface: The surface to render onto
+            render_position: Position where this component should be rendered (controlled by parent)
         """
-        # 1. Draw this component on the surface (subclass responsibility)
-        target_surface
         if target_surface is None:
             raise ValueError("Render called without a surface and no canvas is set.")
         
-        # Get the surface from draw method
+        # Use render_position if provided by parent, otherwise use own position
+        if render_position is not None:
+            abs_x, abs_y = render_position
+        else:
+            abs_x, abs_y = self.abs_position
+        
+        # Draw this component on the surface
         self.draw()
         
-        # Place the rendered surface at the correct absolute position
-        abs_x, abs_y = self.abs_position
-        h, w = self.canvas.shape[:2]
-        target_h, target_w = target_surface.shape[:2]
-        
-        # Ensure we don't go out of bounds
-        end_x = min(abs_x + w, target_w)
-        end_y = min(abs_y + h, target_h)
-        
-        if abs_x >= 0 and abs_y >= 0 and abs_x < target_w and abs_y < target_h:
-            # Handle channel mismatch between canvas and target surface
-            canvas_slice = self.canvas[0:end_y-abs_y, 0:end_x-abs_x]
-            target_slice = target_surface[abs_y:end_y, abs_x:end_x]
+        if self.canvas is not None:
+            # Place the rendered surface at the specified position
+            h, w = self.canvas.shape[:2]
+            target_h, target_w = target_surface.shape[:2]
             
-            # Blend the canvas onto the target surface
-            blended = self._blend_canvas_to_surface(canvas_slice, target_slice)
-            target_surface[abs_y:end_y, abs_x:end_x] = blended
-        if target_surface is None:
-            raise ValueError("Draw method did not return a valid surface.")
+            # Ensure we don't go out of bounds
+            end_x = min(abs_x + w, target_w)
+            end_y = min(abs_y + h, target_h)
+            
+            if abs_x >= 0 and abs_y >= 0 and abs_x < target_w and abs_y < target_h:
+                # Handle channel mismatch between canvas and target surface
+                canvas_slice = self.canvas[0:end_y-abs_y, 0:end_x-abs_x]
+                target_slice = target_surface[abs_y:end_y, abs_x:end_x]
+                
+                # Blend the canvas onto the target surface
+                blended = self._blend_canvas_to_surface(canvas_slice, target_slice)
+                target_surface[abs_y:end_y, abs_x:end_x] = blended
         
-        # 2. Recursively render children
+        # Render children at their positions relative to this component's render position
         for child in self.children:
-            child.render(target_surface)
+            # Calculate child's absolute position based on this component's render position
+            child_abs_x = abs_x + child.position[0]
+            child_abs_y = abs_y + child.position[1]
+            child.render(target_surface, (child_abs_x, child_abs_y))
             
 
     def draw(self) -> np.ndarray:
