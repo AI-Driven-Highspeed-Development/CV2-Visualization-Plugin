@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Tuple, Optional
 from .gui_component import GuiComponent
+from utils.logger_util.logger import get_logger
 
 class GUIGrid(GuiComponent):
     """
@@ -32,6 +33,7 @@ class GUIGrid(GuiComponent):
             padding: Padding between grid cells
             auto_size: Whether to auto-size based on grid content
         """
+        self.logger = get_logger("GUIGrid")
         self.rows = rows
         self.cols = cols
         self.cell_width = cell_width
@@ -58,7 +60,7 @@ class GUIGrid(GuiComponent):
             bool: True if successfully added, False if position is out of bounds
         """
         if row >= self.rows or col >= self.cols or row < 0 or col < 0:
-            print(f"Grid position ({row}, {col}) is out of bounds for {self.rows}x{self.cols} grid")
+            self.logger.warning(f"Grid position ({row}, {col}) is out of bounds for {self.rows}x{self.cols} grid")
             return False
             
         # Calculate position within the grid
@@ -99,7 +101,7 @@ class GUIGrid(GuiComponent):
                 if not occupied:
                     return self.add_child_to_grid(child, row, col)
                     
-        print(f"Grid {self.name} is full ({self.rows}x{self.cols})")
+        self.logger.info(f"Grid {self.name} is full ({self.rows}x{self.cols})")
         return False
         
     def remove_child_from_grid(self, child: GuiComponent):

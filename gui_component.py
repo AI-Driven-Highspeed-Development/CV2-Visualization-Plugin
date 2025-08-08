@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import List, Tuple, Optional, Callable, Union
 import numpy as np
+import cv2
 
 class GuiComponent:
     """
@@ -37,7 +38,9 @@ class GuiComponent:
         self._height_spec = height
         self.auto_size = auto_size
         self.canvas = None  # Canvas to store rendered output
-
+        # Component-wide opacity multiplier for BGRA overlays [0..1]
+        self.opacity: float = 1.0
+        
         if self.parent:
             self.parent.add_child(self)
 
@@ -138,26 +141,74 @@ class GuiComponent:
 
     def _blend_canvas_to_surface(self, canvas_slice: np.ndarray, target_slice: np.ndarray) -> np.ndarray:
         """
-        Blends a canvas slice onto a target surface slice, handling channel mismatches.
-        
-        Args:
-            canvas_slice: The source canvas slice to blend
-            target_slice: The target surface slice to blend onto
-            
-        Returns:
-            The blended result
+        Efficiently blends a component canvas onto a target surface slice.
+        - Fast path for opaque 3-channel images (direct copy).
+        - Optimized BGRA-over-BGR blending with ROI to minimize work.
         """
-        # If canvas has 4 channels (BGRA) and target has 3 (BGR), blend using alpha
-        if len(canvas_slice.shape) == 3 and canvas_slice.shape[2] == 4 and len(target_slice.shape) == 3 and target_slice.shape[2] == 3:
-            # Extract RGB and alpha channels
-            canvas_rgb = canvas_slice[:, :, :3]
-            alpha = canvas_slice[:, :, 3:4] / 255.0
-            
-            # Alpha blending: result = alpha * foreground + (1 - alpha) * background
-            return (alpha * canvas_rgb + (1 - alpha) * target_slice).astype(target_slice.dtype)
-        else:
-            # Direct assignment if channels match
+        # Fast path: identical size and 3 channels -> direct copy
+        if (
+            canvas_slice.ndim == 3 and canvas_slice.shape[2] == 3 and
+            target_slice.ndim == 3 and target_slice.shape[2] == 3 and
+            canvas_slice.shape[:2] == target_slice.shape[:2]
+        ):
             return canvas_slice
+
+        # BGRA (overlay) over BGR (target)
+        if (
+            canvas_slice.ndim == 3 and canvas_slice.shape[2] == 4 and
+            target_slice.ndim == 3 and target_slice.shape[2] == 3
+        ):
+            overlay_bgr = canvas_slice[:, :, :3]
+            alpha = canvas_slice[:, :, 3]
+
+            if np.max(alpha) == 0:
+                return target_slice
+
+            # Build mask and restrict to tight ROI
+            _, mask = cv2.threshold(alpha, 0, 255, cv2.THRESH_BINARY)
+            x, y, w, h = cv2.boundingRect(mask)
+            if w == 0 or h == 0:
+                return target_slice
+
+            roi_overlay = overlay_bgr[y:y+h, x:x+w]
+            roi_target = target_slice[y:y+h, x:x+w]
+            roi_alpha = alpha[y:y+h, x:x+w].astype(np.float32) / 255.0
+
+            # Apply component opacity
+            if self.opacity < 1.0:
+                roi_alpha = np.clip(roi_alpha * float(self.opacity), 0.0, 1.0)
+
+            fg = roi_overlay.astype(np.float32)
+            bg = roi_target.astype(np.float32)
+            a3 = cv2.merge([roi_alpha, roi_alpha, roi_alpha])
+
+            blended = cv2.add(cv2.multiply(a3, fg), cv2.multiply(1.0 - a3, bg))
+            roi_target[:] = blended.astype(np.uint8)
+            return target_slice
+
+        # Fallback: handle overlapping region best-effort
+        h = min(canvas_slice.shape[0], target_slice.shape[0])
+        w = min(canvas_slice.shape[1], target_slice.shape[1])
+        cs = canvas_slice[:h, :w]
+        ts = target_slice[:h, :w]
+
+        if cs.ndim == 3 and cs.shape[2] == 3 and ts.ndim == 3 and ts.shape[2] == 3:
+            ts[:] = cs
+            return target_slice
+
+        if cs.ndim == 3 and cs.shape[2] == 4 and ts.ndim == 3 and ts.shape[2] == 3:
+            overlay_bgr = cs[:, :, :3]
+            alpha = cs[:, :, 3].astype(np.float32) / 255.0
+            if self.opacity < 1.0:
+                alpha = np.clip(alpha * float(self.opacity), 0.0, 1.0)
+            fg = overlay_bgr.astype(np.float32)
+            bg = ts.astype(np.float32)
+            a3 = cv2.merge([alpha, alpha, alpha])
+            blended = cv2.add(cv2.multiply(a3, fg), cv2.multiply(1.0 - a3, bg))
+            ts[:] = blended.astype(np.uint8)
+            return target_slice
+
+        return cs
 
     def render(self, target_surface: Optional[np.ndarray] = None, render_position: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """
